@@ -1,0 +1,9 @@
+/** Checks if input is equal to 0 */
+
+CHIP EQ0 {
+    In in[16];
+    Out out; // if (in == 0) 1 else 0
+    
+    PARTS:
+
+}
