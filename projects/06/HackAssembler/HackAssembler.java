@@ -1,7 +1,10 @@
 import java.io.BufferedWriter;
 import java.io.FileWriter;
+import java.util.LinkedList;
 
 public class HackAssembler {
+
+    private static final String NEWLINE = "\n";
 
     public static void main(String[] args) {
         /** Check inputs and determine what the output file should be named. */
@@ -18,31 +21,37 @@ public class HackAssembler {
             output = fileName.substring(0, fileName.length()-4) + ".hack";
         }
 
+        SymbolTable symbols = new SymbolTable();
+
         /** Create an instruction builder to parse the assembly code and generate
          *  Hack machine code instructions.
          */
         InstructionBuilder builder = new InstructionBuilder(fileName);
-        /**
-         * Using a stringbuilder object to store the entire set of instructions in one string,
-         * output to the file will be performed as one write.
-         */
-        StringBuilder instruction = new StringBuilder();
-        final String newline = "\n";
-        String instr = "";
+        LinkedList<Instruction> instructions = new LinkedList<>();
+        Instruction instr;
         /** Generate each instruction one at a time and append to the StringBuilder object. */
-        while (instr != null) {
-            instr = builder.buildInstruction();
-            if (instr != null) {
-                /** Append a new line as well */
-                instruction.append(instr + "\n");
-            }
+        do {
+            instr = builder.buildNextInstruction();
+            instructions.add(instr);
         }
+        while (instr != null);
+
+        CodeGenerator codeGen = new CodeGenerator();
+        codeGen.buildLabels(instructions, symbols);
+        StringBuilder outputBuilder = new StringBuilder();
+
+        for (Instruction i : instructions) {
+            String generated = codeGen.generateInstruction(i, symbols);
+            outputBuilder.append(generated);
+            outputBuilder.append(NEWLINE);
+        }
+
         /** Attempt to write to the output file. If this fails, just print an error message and allow the
          *  program to end.
          */
         try {
             BufferedWriter writer = new BufferedWriter(new FileWriter(output));
-            writer.write(instruction.toString());
+            writer.write(outputBuilder.toString());
             writer.close();
         } catch (Exception ex) {
             System.out.println("Failed to write to '" + output + "'");

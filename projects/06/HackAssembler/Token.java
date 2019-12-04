@@ -14,6 +14,10 @@ public class Token {
         lineNo = l;
     }
 
+    public boolean isNull() {
+        return text.equals("null");
+    }
+
     public String text() {
         return text;
     }

@@ -39,37 +39,72 @@ public class Instruction {
     }
 
     public Token label() {
-        if (type != InstructionType.L_INSTRUCTION) {
+        if (! isLInstruction()) {
             throw new RuntimeException("Attempt to get a label from a C or A instruction.");
         }
         return label;
     }
 
     public Token address() {
-        if (type != InstructionType.A_INSTRUCTION) {
+        if (! isAInstruction()) {
             throw new RuntimeException("Attempt to get an address from an L or C instruction.");
         }
         return address;
     }
 
     public Token dest() {
-        if (type != InstructionType.C_INSTRUCTION) {
+        if (! isCInstruction()) {
             throw new RuntimeException("Attempt to get a dest field from an A or L instruction.");
         }
         return dest;
     }
 
     public Token jump() {
-        if (type != InstructionType.C_INSTRUCTION) {
+        if (! isCInstruction()) {
             throw new RuntimeException("Attempt to get a jump field from an A or L instruction.");
         }
         return jump;
     }
 
     public Token comp() {
-        if (type != InstructionType.C_INSTRUCTION) {
+        if (! isCInstruction()) {
             throw new RuntimeException("Attempt to get a comp field from an A or L instruction.");
         }
         return comp;
+    }
+
+    public boolean isLInstruction() {
+        return type == InstructionType.L_INSTRUCTION;
+    }
+
+    public boolean isCInstruction() {
+        return type == InstructionType.C_INSTRUCTION;
+    }
+
+    public boolean isAInstruction() {
+        return type == InstructionType.A_INSTRUCTION;
+    }
+
+    public String toString() {
+        if (isAInstruction()) {
+            return address.text() + " (" + address.fileName() + ": " + address.lineNumber() + ")";
+        }
+        if (isCInstruction()) {
+            String details = " (" + comp.fileName() + ": " + comp.lineNumber() + ")";
+            String text = "";
+            if (! dest.isNull()) {
+                text += dest.text() + "=";
+            }
+            text += comp.text();
+            if (! jump.isNull()) {
+                text += ";" + jump.text();
+            }
+            return text + details;
+        }
+        if (isLInstruction()) {
+            return label.text() + " (" + label.fileName() + ": " + label.lineNumber() + ")";
+        } else {
+            return "";
+        }
     }
 }
