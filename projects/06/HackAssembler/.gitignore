@@ -1,3 +1,4 @@
 *.hack
 *.class
 out/*
+.idea
