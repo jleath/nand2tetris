@@ -39,5 +39,47 @@ CHIP CPU {
         pc[15];          // address of next instruction
 
     PARTS:
-    // Put your code here:
+    
+    // Internal Pins
+    Not(in=instruction[15], out=aInstr);
+    Not(in=aInstr, out=cInstr);
+    Or(a=instruction[5], b=aInstr, out=loadA);
+    And(a=instruction[4], b=cInstr, out=dLoad);
+    And(a=cInstr, b=instruction[3], out=writeM);
+
+    // ALU Logic
+    Mux16(a=aRegisterOut, b=inM, sel=instruction[12], out=mOrAOut);
+    ALU(x=dRegisterOut, y=mOrAOut, zx=instruction[11], nx=instruction[10],
+        zy=instruction[9], ny=instruction[8], f=instruction[7], no=instruction[6],
+        out=outM, out=aluOut, zr=zrOut, ng=ngOut);
+
+    // D Register Logic
+    DRegister(in=aluOut, load=dLoad, out=dRegisterOut);
+
+    // A Register Logic
+    Mux16(a=aluOut, b=instruction, sel=aInstr, out=insOrAOut);
+    ARegister(in=insOrAOut, load=loadA, out=aRegisterOut, out[0..14]=addressM);
+
+    // PC Logic
+    
+    Not(in=zrOut, out=notZr);
+    Not(in=ngOut, out=notNg);
+    And(a=notZr, b=notNg, out=notZrAndNotNg);
+    Or(a=zrOut, b=notNg, out=zrOrNotNg);
+    Or(a=zrOut, b=ngOut, out=zrOrNg);
+    DMux8Way(in=true, sel=instruction[0..2], a=jumpA, b=jumpB, c=jumpC, d=jumpD, e=jumpE,
+             f=jumpF, g=jumpG, h=jumpH);
+    And(a=jumpA, b=false, out=jumpAYes);
+    And(a=jumpB, b=notZrAndNotNg, out=jumpBYes);
+    And(a=jumpC, b=zrOut, out=jumpCYes);
+    And(a=jumpD, b=zrOrNotNg, out=jumpDYes);
+    And(a=jumpE, b=ngOut, out=jumpEYes);
+    And(a=jumpF, b=notZr, out=jumpFYes);
+    And(a=jumpG, b=zrOrNg, out=jumpGYes);
+    And(a=jumpH, b=true, out=jumpHYes);
+    Or8Way(in[0]=jumpAYes, in[1]=jumpBYes, in[2]=jumpCYes, in[3]=jumpDYes,
+           in[4]=jumpEYes, in[5]=jumpFYes, in[6]=jumpGYes, in[7]=jumpHYes, out=loadFlag);
+    And(a=loadFlag, b=cInstr, out=loadBit);
+    Not(in=loadBit, out=incFlag);
+    PC(in=aRegisterOut, load=loadBit, inc=incFlag, reset=reset, out[0..14]=pc);
 }
