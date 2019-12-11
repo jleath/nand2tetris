@@ -1,3 +1,8 @@
 *.asm
 *.hack
 *.out
+*.class
+*/out/*
+.idea
+*.iml
+projects/06/HackAssembler/out/
