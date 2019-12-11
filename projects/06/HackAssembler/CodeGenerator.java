@@ -52,12 +52,12 @@ public class CodeGenerator {
         if (! i.isCInstruction()) {
             throw new RuntimeException("Invalid instruction passed to generateCInstruction -> " + i);
         }
-        Token comp = i.comp();
         Token dest = i.dest();
+        Token comp = i.comp();
         Token jump = i.jump();
         try {
-            String compCode = symbols.getCompCode(comp);
             String destCode = symbols.getDestCode(dest);
+            String compCode = symbols.getCompCode(comp);
             String jumpCode = symbols.getJumpCode(jump);
             return "111" + compCode + destCode + jumpCode;
         } catch (RuntimeException ex) {

@@ -41,7 +41,7 @@ public class Tokenizer {
         fillBuffer();
     }
 
-    public int lineNumber() {
+    private int lineNumber() {
         return lineNo;
     }
 

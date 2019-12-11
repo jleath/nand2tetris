@@ -5,12 +5,13 @@ public class InstructionBuilder {
     private static final char A_INSTRUCTION_FLAG = '@';
     /** The first character of an L instruction in the assembly code. */
     private static final char L_INSTRUCTION_FLAG = '(';
+    private static final String TOKENS = ";=";
     /** The tokenizer that will be used to generate tokens from the input file
      *  one at a time. */
     private Tokenizer t;
 
     public InstructionBuilder(String fileName) {
-        t = new Tokenizer(fileName);
+        t = new Tokenizer(fileName, TOKENS);
     }
 
     /** Returns true if TOKEN is the beginning of an A instruction */
