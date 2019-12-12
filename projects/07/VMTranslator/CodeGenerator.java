@@ -12,7 +12,7 @@ public class CodeGenerator {
     private static final String SET_TRUE = "@SP\nA=M\nM=-1\n";
     private static final String SET_FALSE = "@SP\nA=M\nM=0\n";
     private static final String POP_COPY_CODE = "@tmp\nM=D\n@SP\nM=M-1\nA=M\nD=M\n@tmp\nA=M\nM=D\n";
-    private static final String PUSH_COPY_CODE = "\nD=M\n@SP\nA=M\nM=D\n" + INCREMENT_SP;
+    private static final String PUSH_COPY_CODE = "D=M\n@SP\nA=M\nM=D\n" + INCREMENT_SP;
     private static final String[] SEGMENT_NAMES = {"local", "argument", "this", "that"};
     private static final String[] SEGMENT_CODES = {"LCL", "ARG", "THIS", "THAT"};
     private static final String INFINITE_JUMP_LABEL = "NOEND";
@@ -23,10 +23,12 @@ public class CodeGenerator {
 
     private int numJumpLabels;
     private String fileName;
+    private String currFunctionName;
 
     public CodeGenerator(String fileName) {
         numJumpLabels = 0;
         this.fileName = removePaths(fileName);
+        currFunctionName = "";
     }
 
     /** Extract and return the name of a file from a path. */
@@ -46,7 +48,7 @@ public class CodeGenerator {
 
     /** For each instruction processed, include a comment listing the original vm instruction */
     private String buildComment(Instruction i) {
-        return COMMENT_DELIMITER + i.toString() + "\n";
+        return COMMENT_DELIMITER + i.toString() + " (" + i.command().details() + ")\n";
     }
 
     private String getSegmentCode(String segment) {
@@ -69,7 +71,7 @@ public class CodeGenerator {
         } else if (i.commandType() == Instruction.CommandType.C_POP) {
             return comment + generatePop(i);
         } else if (i.commandType() == Instruction.CommandType.C_LABEL) {
-            return comment + generateLabel(i);
+            return comment + buildLabel(buildFunctionLabel(i.arg1().text()));
         } else if (i.commandType() == Instruction.CommandType.C_GOTO) {
             return comment + generateGoto(i);
         } else if (i.commandType() == Instruction.CommandType.C_IF) {
@@ -79,32 +81,43 @@ public class CodeGenerator {
         }
     }
 
-    private String generateLabel(Instruction i) {
-        // TODO
-        return null;
-    }
-
     private String generateGoto(Instruction i) {
-        // TODO
-        return null;
+        return buildAInstruction(buildFunctionLabel(i.arg1().text())) + UNCONDITIONAL_JUMP_LABEL;
     }
 
     private String generateIf(Instruction i) {
+        String label = buildFunctionLabel(i.arg1().text());
+        return DECREMENT_SP + "D=M\n" + buildAInstruction(label) + "D;JNE\n";
+    }
+
+    public String generateInit() {
         // TODO
         return null;
     }
 
+    /** Generate the hack machine code needed to affect a pop operation.
+     *  Arg1 of the instruction I is the destination memory segment,
+     *  Arg2 is the offset into the memory segment where the data should be placed.
+     *  Returns a string representing the machine code.
+     */
     private String generatePop(Instruction i) {
         String segment = i.arg1().text();
         String offset = i.arg2().text();
+        // Handle special case where we are using the temp memory segment, this is
+        // a special case because we are directly accessing a memory location rather
+        // than using a built-in symbol in the Hack language
         if (segment.equals("temp")) {
             int address = TEMP_BASE_ADDRESS + Integer.parseInt(offset);
             return generateDirectPop(Integer.toString(address));
         }
+        // Handle special case where we are using the pointer memory segment, this is
+        // similar to the "temp" case
         if (segment.equals("pointer")) {
             int address = POINTER_BASE_ADDRESS + Integer.parseInt(offset);
             return generateDirectPop(Integer.toString(address));
         }
+        // Handle special case where we are using the static memory segment. This is
+        // a special case because static data gets a special label ('fileName.offset')
         if (segment.equals("static")) {
             String staticLabel = buildStaticLabel(offset);
             return generateDirectPop(staticLabel);
@@ -117,25 +130,37 @@ public class CodeGenerator {
         }
     }
 
+    /** Returns a string representing a label in the hack machine language ('@label') */
     private String buildAInstruction(String label) {
         return "@" + label + "\n";
     }
 
+    /** Returns a string representing a static symbol name in the hack machine language ('fileName.offset') */
     private String buildStaticLabel(String offset) {
         return fileName + "." + offset;
     }
 
+    /** Returns a string with the hack machine code needed to affect a simple pop from the stack into
+     *  *(*(segmentCode)+offset) = Stack[--SP]
+     */
     private String generateBasicPop(String segmentCode, String offset) {
         String offsetLabel = buildAInstruction(offset);
         String segmentLabel = buildAInstruction(segmentCode);
         return offsetLabel + "D=A\n" + segmentLabel + "D=D+M\n" + POP_COPY_CODE;
     }
 
+    /** Similar to generateBasicPop, except takes a direct address instead of a segmentCode
+     *  and offset. Used for accessing the temp and pointer memory segments
+     */
     private String generateDirectPop(String address) {
         String addressLabel = buildAInstruction(address);
         return addressLabel + "D=A\n" + POP_COPY_CODE;
     }
 
+    /** Returns a string with the hack machine code needed to affect a simple push onto the stack
+     *  using the data located at the given offset of the given memory segment.
+     *  *(*SP++) = *(*(segmentCode)+offset))
+     */
     private String generatePush(Instruction i) {
         String segment = i.arg1().text();
         String offset = i.arg2().text();
@@ -146,6 +171,7 @@ public class CodeGenerator {
         return generatePush(segment, offset);
     }
 
+    /** Dispatch method for handling push operations */
     private String generatePush(String segment, String offset) {
         if (segment.equals("temp")) {
             int address = Integer.parseInt(offset) + 5;
@@ -231,6 +257,10 @@ public class CodeGenerator {
 
     private String unconditionalJump(String label) {
         return buildAInstruction(label) + UNCONDITIONAL_JUMP_LABEL;
+    }
+
+    private String buildFunctionLabel(String label) {
+        return currFunctionName + "$" + label;
     }
 
     private String buildLabel(String label) {

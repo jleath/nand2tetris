@@ -9,9 +9,20 @@ public class InstructionBuilder {
     /** The tokenizer that will be used to generate tokens from the input file
      *  one at a time. */
     private Tokenizer t;
+    private String fileName;
 
     public InstructionBuilder(String fileName) {
         t = new Tokenizer(fileName, TOKENS);
+        this.fileName = fileName;
+    }
+
+    public void switchFile(String fileName) {
+        t.destroy();
+        t = new Tokenizer(fileName, TOKENS);
+    }
+
+    public String fileName() {
+        return fileName;
     }
 
     /** Generate the next instruction. Gets the next token, inspects it to determine if
