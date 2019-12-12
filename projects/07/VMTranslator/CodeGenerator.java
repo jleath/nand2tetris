@@ -18,15 +18,18 @@ public class CodeGenerator {
     private static final String INFINITE_JUMP_LABEL = "NOEND";
     private static final String COMMENT_DELIMITER = "// ";
     private static final String INPUT_FILE_FORMAT = ".vm";
+    private static final String FUNC_RETURN_LABEL = "FUNC_RETURN_";
     private static final int TEMP_BASE_ADDRESS = 5;
     private static final int POINTER_BASE_ADDRESS = 3;
 
-    private int numJumpLabels;
+    private int numJumpNames;
+    private int numReturnNames;
     private String fileName;
     private String currFunctionName;
 
     public CodeGenerator(String fileName) {
-        numJumpLabels = 0;
+        numJumpNames = 0;
+        numReturnNames = 0;
         this.fileName = removePaths(fileName);
         currFunctionName = "";
     }
@@ -63,6 +66,9 @@ public class CodeGenerator {
     }
 
     public String generateCode(Instruction i) {
+        if (i.command().fileName() != null && ! i.command().fileName().equals(fileName)) {
+            fileName = i.command().fileName();
+        }
         String comment = buildComment(i);
         if (i.commandType() == Instruction.CommandType.C_ARITHMETIC) {
             return comment + generateArithmetic(i);
@@ -71,29 +77,102 @@ public class CodeGenerator {
         } else if (i.commandType() == Instruction.CommandType.C_POP) {
             return comment + generatePop(i);
         } else if (i.commandType() == Instruction.CommandType.C_LABEL) {
-            return comment + buildLabel(buildFunctionLabel(i.arg1().text()));
+            return comment + generateLabel(i.arg1().text());
         } else if (i.commandType() == Instruction.CommandType.C_GOTO) {
             return comment + generateGoto(i);
         } else if (i.commandType() == Instruction.CommandType.C_IF) {
             return comment + generateIf(i);
+        } else if (i.commandType() == Instruction.CommandType.C_FUNCTION) {
+            return comment + generateFunction(i);
+        } else if (i.commandType() == Instruction.CommandType.C_RETURN) {
+            return comment + generateReturn(i);
+        } else if (i.commandType() == Instruction.CommandType.C_CALL) {
+            return comment + generateCall(i);
         } else {
             return "";
         }
     }
 
+    /** Return the machine code for a jump label within a function */
+    private String generateLabel(String label) {
+        return buildJumpLabel(buildFunctionLabel(label));
+    }
+
+    /** Return the machine code needed to affect a goto command. */
     private String generateGoto(Instruction i) {
         return buildAInstruction(buildFunctionLabel(i.arg1().text())) + UNCONDITIONAL_JUMP_LABEL;
     }
 
+    /** Return the machine code needed to affect an if-goto command. */
     private String generateIf(Instruction i) {
         String label = buildFunctionLabel(i.arg1().text());
         return DECREMENT_SP + "D=M\n" + buildAInstruction(label) + "D;JNE\n";
     }
 
     public String generateInit() {
-        // TODO
-        return null;
+        Instruction callSysInit = new Instruction(Instruction.CommandType.C_CALL,
+                                                    new Token("call", null, 0),
+                                                    new Token("Sys.init",null,0),
+                                                    new Token("0", null, 0));
+        return "@256\nD=A\n@SP\nM=D\n" + generateCode(callSysInit);
     }
+
+    public String generateFunction(Instruction i) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(generateLabel(i.arg1().text()));
+        Token push = new Token("push","",0);
+        Token constant = new Token("constant","",0);
+        Token zero = new Token("0", "", 0);
+        Instruction zeroMemory = new Instruction(Instruction.CommandType.C_PUSH, new Token("push", null, 0), constant, zero);
+        for (int j = 0; j < Integer.parseInt(i.arg2().text()); j++) {
+            builder.append(generateCode(zeroMemory));
+        }
+        return builder.toString();
+    }
+
+    public String generateCall(Instruction i) {
+        String returnName = getNextReturnName();
+        String functionName = i.arg1().text();
+        String n = i.arg2().text();
+        Instruction gotoF = new Instruction(Instruction.CommandType.C_GOTO, new Token("goto", null, 0), new Token(functionName, null, 0));
+        // push return address
+        String result = "@" + returnName +"\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n";
+        // save state
+        result += "@LCL\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n";
+        result += "@ARG\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n";
+        result += "@THIS\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n";
+        result += "@THAT\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n";
+        // reposition ARG pointer
+        result += "@SP\nD=M\n@" + n + "\nD=D-A\n@5\nD=D-A\n@ARG\nM=D\n";
+        // reposition LCL pointer
+        result += "@SP\nD=M\n@LCL\nM=D\n";
+        // execute function
+        result += generateCode(gotoF);
+        // return label
+        result += buildJumpLabel(returnName);
+        return result;
+    }
+
+    public String generateReturn(Instruction i) {
+        Instruction popToArg = new Instruction(Instruction.CommandType.C_POP, new Token("pop", null, 0), new Token("argument", null, 0),
+                                               new Token("0", null, 0));
+        // Store the current value of LCL
+        String result = "@LCL\nD=M\n@FRAME\nM=D\n";
+        // store the return address
+        result += "@5\nD=A\n@FRAME\nD=M-D\nA=D\nD=M\n@RET\nM=D\n";
+        // reposition return value
+        result += generateCode(popToArg);
+        // reset SP
+        result += "@ARG\nD=M\nD=D+1\n@SP\nM=D\n";
+        // reset saved state
+        result += "@1\nD=A\n@FRAME\nD=M-D\nA=D\nD=M\n@THAT\nM=D\n";
+        result += "@2\nD=A\n@FRAME\nD=M-D\nA=D\nD=M\n@THIS\nM=D\n";
+        result += "@3\nD=A\n@FRAME\nD=M-D\nA=D\nD=M\n@ARG\nM=D\n";
+        result += "@4\nD=A\n@FRAME\nD=M-D\nA=D\nD=M\n@LCL\nM=D\n";
+        // goto return
+        return result + "@RET\nA=M\n0;JMP\n";
+    }
+
 
     /** Generate the hack machine code needed to affect a pop operation.
      *  Arg1 of the instruction I is the destination memory segment,
@@ -137,7 +216,8 @@ public class CodeGenerator {
 
     /** Returns a string representing a static symbol name in the hack machine language ('fileName.offset') */
     private String buildStaticLabel(String offset) {
-        return fileName + "." + offset;
+        String name = removePaths(fileName);
+        return name + "." + offset;
     }
 
     /** Returns a string with the hack machine code needed to affect a simple pop from the stack into
@@ -204,9 +284,9 @@ public class CodeGenerator {
         return addressLabel + PUSH_COPY_CODE;
     }
 
-    private String getNextJumpLabel() {
-        numJumpLabels += 1;
-        return "JUMP" + numJumpLabels;
+    private String getNextJumpName() {
+        numJumpNames += 1;
+        return "JUMP" + numJumpNames;
     }
 
     private String generateArithmetic(Instruction i) {
@@ -243,16 +323,16 @@ public class CodeGenerator {
     }
 
     private String buildConditional(String jumpCode) {
-        String jumpLabel1 = getNextJumpLabel();
-        String jumpLabel2 = getNextJumpLabel();
+        String jumpLabel1 = getNextJumpName();
+        String jumpLabel2 = getNextJumpName();
         String result = "D=M-D\n" + buildAInstruction(jumpLabel1);
         result = result + "D;" + jumpCode + "\n";
         result = result + SET_FALSE;
         result = result + unconditionalJump(jumpLabel2);
-        result = result + buildLabel(jumpLabel1);
+        result = result + buildJumpLabel(jumpLabel1);
         result = result + SET_TRUE;
         result = result + unconditionalJump(jumpLabel2);
-        return result + buildLabel(jumpLabel2);
+        return result + buildJumpLabel(jumpLabel2);
     }
 
     private String unconditionalJump(String label) {
@@ -263,12 +343,17 @@ public class CodeGenerator {
         return currFunctionName + "$" + label;
     }
 
-    private String buildLabel(String label) {
+    private String buildJumpLabel(String label) {
         return "(" + label + ")\n";
     }
 
     public String infiniteLoop() {
-        return buildLabel(INFINITE_JUMP_LABEL) + unconditionalJump(INFINITE_JUMP_LABEL);
+        return buildJumpLabel(INFINITE_JUMP_LABEL) + unconditionalJump(INFINITE_JUMP_LABEL);
+    }
+
+    private String getNextReturnName() {
+        numReturnNames += 1;
+        return FUNC_RETURN_LABEL + numReturnNames;
     }
 
 }

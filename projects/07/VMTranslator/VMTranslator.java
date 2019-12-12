@@ -61,18 +61,19 @@ public class VMTranslator {
             Instruction instr;
             do {
                 instr = builder.buildNextInstruction();
-                instructions.add(instr);
+                if (instr != null) {
+                    instructions.add(instr);
+                }
             }
             while (instr != null);
-        };
+        }
         builder.close();
         /* Feed all the instructions into a CodeGenerator and append the output for each instruction
            to a StringBuilder
          */
         StringBuilder outputBuilder = new StringBuilder();
         CodeGenerator codeGen = new CodeGenerator(fileName);
-        // TODO
-        // outputBuilder.append(codeGen.generateInit());
+        outputBuilder.append(codeGen.generateInit());
         for (Instruction i : instructions) {
             if (i == null) {
                 break;

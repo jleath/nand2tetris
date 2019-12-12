@@ -19,6 +19,7 @@ public class InstructionBuilder {
     public void switchFile(String fileName) {
         t.destroy();
         t = new Tokenizer(fileName, TOKENS);
+        this.fileName = fileName;
     }
 
     public String fileName() {
