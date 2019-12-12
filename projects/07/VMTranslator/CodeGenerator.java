@@ -1,8 +1,15 @@
 public class CodeGenerator {
+
     private static final String UNCONDITIONAL_JUMP_LABEL = "0;JMP\n";
+    private static final String JUMP_IF_D_NOT_ZERO = "D;JNE\n";
     private static final String DECREMENT_SP = "@SP\nM=M-1\nA=M\n";
     private static final String INCREMENT_SP = "@SP\nM=M+1\n";
     private static final String STORE_D_IN_SP = "@SP\nA=M\nM=D\n";
+    private static final String STORE_M_IN_D = "D=M\n";
+    private static final String STORE_D_IN_M = "M=D\n";
+    private static final String STORE_A_IN_D = "D=A\n";
+    private static final String STORE_SP_IN_D = "@SP\nD=M\n";
+    private static final String SUBTRACT_A_FROM_D = "D=D-A\n";
     private static final String NEG_CODE = "M=-M\n";
     private static final String NOT_CODE = "M=!M\n";
     private static final String ADD_CODE = "M=M+D\n";
@@ -13,6 +20,8 @@ public class CodeGenerator {
     private static final String SET_FALSE = "@SP\nA=M\nM=0\n";
     private static final String POP_COPY_CODE = "@tmp\nM=D\n@SP\nM=M-1\nA=M\nD=M\n@tmp\nA=M\nM=D\n";
     private static final String PUSH_COPY_CODE = "D=M\n@SP\nA=M\nM=D\n" + INCREMENT_SP;
+    private static final String INIT_CODE = "@256\nD=A\n@SP\nM=D\n";
+
     private static final String[] SEGMENT_NAMES = {"local", "argument", "this", "that"};
     private static final String[] SEGMENT_CODES = {"LCL", "ARG", "THIS", "THAT"};
     private static final String INFINITE_JUMP_LABEL = "NOEND";
@@ -22,9 +31,15 @@ public class CodeGenerator {
     private static final int TEMP_BASE_ADDRESS = 5;
     private static final int POINTER_BASE_ADDRESS = 3;
 
+    /** The number of Jump labels that have been generated so far. This counter only counts
+     *  jump labels that were created as part of a normal conditional command (JEQ, JGT, JLT) */
     private int numJumpNames;
+    /** The number of Return labels that have been generated so far. This counter only counts
+     *  return labels created while translating function code. */
     private int numReturnNames;
+    /** The name of the file that stored the instruction currently being processed */
     private String fileName;
+    /** The name of the function that is currently being created, if any */
     private String currFunctionName;
 
     public CodeGenerator(String fileName) {
@@ -37,6 +52,7 @@ public class CodeGenerator {
     /** Extract and return the name of a file from a path. */
     private String removePaths(String file) {
         int i = file.length() - 1;
+        // Find the path separator, if one exists
         while (i >= 0) {
             char curr = file.charAt(i);
             // Handle both linux and windows path separators
@@ -46,6 +62,7 @@ public class CodeGenerator {
             }
             i -= 1;
         }
+        // return the text following the path separator, with the .vm extension excluded
         return file.substring(0, file.length()-INPUT_FILE_FORMAT.length());
     }
 
@@ -54,6 +71,9 @@ public class CodeGenerator {
         return COMMENT_DELIMITER + i.toString() + " (" + i.command().details() + ")\n";
     }
 
+    /** Return the machine code symbol for the given memory segment. The segment argument
+     *  must match the labels used in the VM code to identify a memory segment (ex. argument, local, etc)
+     */
     private String getSegmentCode(String segment) {
         int i = 0;
         while (i < SEGMENT_NAMES.length) {
@@ -65,11 +85,14 @@ public class CodeGenerator {
         return null;
     }
 
+    /** Return a string containing the machine code needed to affect instruction I. */
     public String generateCode(Instruction i) {
+        // Check to see if the current instruction came from a new file.
         if (i.command().fileName() != null && ! i.command().fileName().equals(fileName)) {
             fileName = i.command().fileName();
         }
         String comment = buildComment(i);
+        // Dispatch to the appropriate method based on the command type of the instruction
         if (i.commandType() == Instruction.CommandType.C_ARITHMETIC) {
             return comment + generateArithmetic(i);
         } else if (i.commandType() == Instruction.CommandType.C_PUSH) {
@@ -106,46 +129,52 @@ public class CodeGenerator {
     /** Return the machine code needed to affect an if-goto command. */
     private String generateIf(Instruction i) {
         String label = buildFunctionLabel(i.arg1().text());
-        return DECREMENT_SP + "D=M\n" + buildAInstruction(label) + "D;JNE\n";
+        return DECREMENT_SP + STORE_M_IN_D + buildAInstruction(label) + JUMP_IF_D_NOT_ZERO;
     }
 
+    /** Return the machine code needed for initializing the program:
+     *  1. set SP to 256
+     *  2. call Sys.init
+     */
     public String generateInit() {
-        Instruction callSysInit = new Instruction(Instruction.CommandType.C_CALL,
-                                                    new Token("call", null, 0),
-                                                    new Token("Sys.init",null,0),
-                                                    new Token("0", null, 0));
-        return "@256\nD=A\n@SP\nM=D\n" + generateCode(callSysInit);
+        return INIT_CODE + generateCode(InstructionBuilder.sysInitInstruction());
     }
 
+    /** Generate the machine code needed to affect the function command. */
     public String generateFunction(Instruction i) {
         StringBuilder builder = new StringBuilder();
-        builder.append(generateLabel(i.arg1().text()));
-        Token push = new Token("push","",0);
-        Token constant = new Token("constant","",0);
-        Token zero = new Token("0", "", 0);
-        Instruction zeroMemory = new Instruction(Instruction.CommandType.C_PUSH, new Token("push", null, 0), constant, zero);
-        for (int j = 0; j < Integer.parseInt(i.arg2().text()); j++) {
-            builder.append(generateCode(zeroMemory));
-        }
-        return builder.toString();
+        String functionLabel = generateLabel(i.arg1().text());
+        // zeroMemory will be the instruction "push constant 0"
+        Instruction zeroMemory = InstructionBuilder.zeroMemoryInstruction();
+        String zeroMemoryCode = generateCode(zeroMemory);
+        return functionLabel + String.valueOf(zeroMemoryCode).repeat(Math.max(0, Integer.parseInt(i.arg2().text())));
     }
 
+    public String generateStashingCode(String segmentCode) {
+        return buildAInstruction(segmentCode) + STORE_M_IN_D + STORE_D_IN_SP + INCREMENT_SP;
+    }
+
+    /** Generate the machine code needed to affect the call command. */
     public String generateCall(Instruction i) {
         String returnName = getNextReturnName();
-        String functionName = i.arg1().text();
         String n = i.arg2().text();
-        Instruction gotoF = new Instruction(Instruction.CommandType.C_GOTO, new Token("goto", null, 0), new Token(functionName, null, 0));
+        Instruction gotoF = InstructionBuilder.gotoFunctionInstruction((i.arg1().text()));
         // push return address
-        String result = "@" + returnName +"\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n";
+        String result = buildAInstruction(returnName) + STORE_A_IN_D + STORE_D_IN_SP + INCREMENT_SP;
         // save state
-        result += "@LCL\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n";
-        result += "@ARG\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n";
-        result += "@THIS\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n";
-        result += "@THAT\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n";
+        result += generateStashingCode("LCL");
+        result += generateStashingCode("ARG");
+        result += generateStashingCode("THIS");
+        result += generateStashingCode("THAT");
         // reposition ARG pointer
-        result += "@SP\nD=M\n@" + n + "\nD=D-A\n@5\nD=D-A\n@ARG\nM=D\n";
+        String constantNLabel = buildAInstruction(n);
+        String constant5Label = buildAInstruction("5");
+        String argLabel = buildAInstruction("ARG");
+        result += STORE_SP_IN_D + constantNLabel + SUBTRACT_A_FROM_D + constant5Label + SUBTRACT_A_FROM_D;
+        result += argLabel + STORE_D_IN_M;
         // reposition LCL pointer
-        result += "@SP\nD=M\n@LCL\nM=D\n";
+        String lclLabel = buildAInstruction("LCL");
+        result += STORE_SP_IN_D + lclLabel + STORE_D_IN_M;
         // execute function
         result += generateCode(gotoF);
         // return label

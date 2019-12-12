@@ -26,6 +26,26 @@ public class InstructionBuilder {
         return fileName;
     }
 
+    public static Instruction sysInitInstruction() {
+        return new Instruction(Instruction.CommandType.C_CALL,
+                new Token("call", null, 0),
+                new Token("Sys.init", null, 0),
+                new Token("0", null, 0));
+    }
+
+    public static Instruction zeroMemoryInstruction() {
+        Token push = new Token("push",null,0);
+        Token constant = new Token("constant","",0);
+        Token zero = new Token("0", "", 0);
+        return new Instruction(Instruction.CommandType.C_PUSH, push, constant, zero);
+    }
+
+    public static Instruction gotoFunctionInstruction(String function) {
+        Token gotoToken = new Token("goto", null, 0);
+        Token nameToken = new Token(function, null, 0);
+        return new Instruction(Instruction.CommandType.C_GOTO, gotoToken, nameToken);
+    }
+
     /** Generate the next instruction. Gets the next token, inspects it to determine if
      *  the token is the beginning of an Arithmetic Instruction, a pop instruction or a push instruction.
      */

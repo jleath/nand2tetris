@@ -1,19 +1,33 @@
 public class Instruction {
-    /** VM Instructions can be one of 9 types. The CommandType enum specifies these types. */
+    /**
+     * VM Instructions can be one of 9 types. The CommandType enum specifies these types.
+     */
     public enum CommandType {
         C_ARITHMETIC, C_PUSH, C_POP, C_LABEL, C_GOTO, C_IF, C_FUNCTION, C_RETURN, C_CALL
-    };
+    }
 
-    /** The first token of the instruction. eg. add, sub, push, pop */
+    ;
+
+    /**
+     * The first token of the instruction. eg. add, sub, push, pop
+     */
     private Token command;
-    /** The second token of the instruction, the memory segment to operate on. */
+    /**
+     * The second token of the instruction, the memory segment to operate on.
+     */
     private Token arg1;
-    /** The third token of the instruction, the offset to use when accessing a memory segment */
+    /**
+     * The third token of the instruction, the offset to use when accessing a memory segment
+     */
     private Token arg2;
-    /** The type of the instruction, dictated by the command variable. */
+    /**
+     * The type of the instruction, dictated by the command variable.
+     */
     private CommandType commandType;
 
-    /** Constructor for single argument commands. eg. goto label */
+    /**
+     * Constructor for single argument commands. eg. goto label
+     */
     public Instruction(CommandType type, Token c, Token arg1) {
         this(type, c, arg1, null);
     }
